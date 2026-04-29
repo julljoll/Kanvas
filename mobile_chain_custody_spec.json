@@ -1,0 +1,886 @@
+{
+  "project_name": "Mobile Chain of Custody System - Venezuela",
+  "version": "1.0.0",
+  "description": "Especificación técnica basada en la lógica de Kanvas para gestión de cadena de custodia de dispositivos móviles Android según Manual Único de Cadena de Custodia Venezolano",
+  
+  "base_architecture": {
+    "source_project": "Kanvas",
+    "core_components": [
+      {
+        "component": "Evidence Tracker",
+        "original_location": "sod.xlsx - Sheet: Evidence Tracker",
+        "purpose": "Seguimiento de evidencias digitales con hashes y notas de cadena de custodia",
+        "fields": [
+          "Evidence ID",
+          "EvidenceType",
+          "EvidenceFormat", 
+          "EvidenceSource",
+          "Date Requested",
+          "Date Received",
+          "Collected By",
+          "Evidence Hash (SHA256, SHA1, MD5)",
+          "Storage Location",
+          "Chain of Custory Notes [CORREGIR: Chain of Custody Notes]",
+          "Evidence Description",
+          "Notes"
+        ]
+      },
+      {
+        "component": "System Type Manager",
+        "original_location": "helper/system_type.py - class SystemTypeManager",
+        "purpose": "Gestión de tipos de sistemas con iconos y colores de fallback",
+        "database_table": "system_types",
+        "yaml_config": "helper/system_types.yaml",
+        "mobile_entry": {
+          "name": "Mobile",
+          "display_name": "Mobile Device",
+          "category": "Client",
+          "icon_filename": "mobile_icon.png",
+          "fallback_color": "#00ff7f",
+          "description": "Mobile phones and tablets",
+          "sort_order": 18
+        }
+      },
+      {
+        "component": "Evidence Type Manager",
+        "original_location": "helper/system_type.py - class EvidenceTypeManager",
+        "purpose": "CRUD de tipos de evidencia personalizables",
+        "database_table": "EvidenceType",
+        "fields": ["id", "evidencetype", "sort_order", "source"],
+        "ui_dialog": "show_add_evidence_type_dialog()"
+      },
+      {
+        "component": "Database Utilities",
+        "original_location": "helper/database_utils.py",
+        "purpose": "Creación y gestión de tablas SQLite",
+        "tables": [
+          "tor_list",
+          "EvidenceType",
+          "ms_portals",
+          "bookmarks",
+          "evtx_id",
+          "entra_appid",
+          "mitre_techniques",
+          "mitre_tactics",
+          "system_types",
+          "icon_mappings",
+          "defend",
+          "cisa_ran_exploit"
+        ]
+      },
+      {
+        "component": "File Locking System",
+        "original_location": "kanvas.py - methods: acquire_file_lock(), release_file_lock()",
+        "purpose": "Control de acceso concurrente con filelock",
+        "library": "filelock.FileLock",
+        "modes": ["read-write", "read-only"]
+      },
+      {
+        "component": "Reporting Engine",
+        "original_location": "helper/reporting/",
+        "files": [
+          "report_engine.py",
+          "report_builder.py",
+          "html_exporter.py",
+          "visualization_generator.py"
+        ],
+        "purpose": "Generación de reportes HTML con visualizaciones"
+      },
+      {
+        "component": "Timeline Visualization",
+        "original_location": "helper/viz_timeline.py",
+        "purpose": "Línea de tiempo cronológica de incidentes"
+      },
+      {
+        "component": "Network Visualization",
+        "original_location": "helper/viz_network.py",
+        "purpose": "Mapa de red de sistemas involucrados"
+      }
+    ]
+  },
+
+  "venezuelan_chain_custody_requirements": {
+    "legal_framework": "Manual Único de Cadena de Custodia - Venezuela",
+    "authority": "Ministerio Público / CICPC / Policía Científica",
+    "required_fields_mobile_device": {
+      "device_identification": {
+        "imei": {"type": "string", "length": 15, "required": true, "description": "International Mobile Equipment Identity"},
+        "serial_number": {"type": "string", "required": true, "description": "Número de serie del fabricante"},
+        "brand": {"type": "string", "required": true, "examples": ["Samsung", "Xiaomi", "Motorola", "Huawei", "Apple"]},
+        "model": {"type": "string", "required": true, "examples": ["Galaxy S21", "Redmi Note 10", "Moto G Power"]},
+        "android_version": {"type": "string", "required": true, "examples": ["Android 11", "Android 12", "Android 13"]},
+        "security_patch_level": {"type": "date", "format": "YYYY-MM-DD", "required": false},
+        "build_number": {"type": "string", "required": false}
+      },
+      "owner_information": {
+        "full_name": {"type": "string", "required": true, "description": "Nombre completo del propietario"},
+        "id_type": {"type": "enum", "values": ["Cédula", "Pasaporte", "RIF", "LE", "LM"], "required": true},
+        "id_number": {"type": "string", "required": true, "description": "Número de identificación"},
+        "phone_number": {"type": "string", "required": false, "description": "Número asociado al dispositivo"},
+        "address": {"type": "string", "required": false, "description": "Dirección del propietario"}
+      },
+      "seizure_information": {
+        "case_number": {"type": "string", "required": true, "description": "Número de caso o expediente fiscal"},
+        "legal_basis": {"type": "enum", "values": ["Orden Judicial", "Flagrancia", "Consentimiento", "Allanamiento"], "required": true},
+        "judicial_order_number": {"type": "string", "required": false, "description": "Número de orden judicial si aplica"},
+        "seizure_date": {"type": "datetime", "format": "YYYY-MM-DD HH:MM:SS", "required": true},
+        "seizure_time": {"type": "time", "format": "HH:MM:SS", "required": true},
+        "seizure_location": {"type": "string", "required": true, "description": "Lugar geográfico exacto de incautación"},
+        "seizure_reason": {"type": "text", "required": true, "description": "Motivo legal de la incautación"},
+        "prosecutor_name": {"type": "string", "required": false, "description": "Nombre del fiscal asignado"},
+        "prosecutor_office": {"type": "string", "required": false, "description": "Fiscalía asignada"}
+      },
+      "physical_condition": {
+        "external_condition": {"type": "enum", "values": ["Excelente", "Bueno", "Regular", "Dañado"], "required": true},
+        "screen_condition": {"type": "enum", "values": ["Intacto", "Roto", "Rayado", "Sin pantalla"], "required": true},
+        "body_condition": {"type": "enum", "values": ["Intacto", "Golpes", "Arañazos", "Deformado"], "required": true},
+        "ports_condition": {"type": "enum", "values": ["Funcionales", "Dañados", "Obstruidos"], "required": true},
+        "power_button": {"type": "boolean", "required": true, "description": "Estado del botón de encendido"},
+        "volume_buttons": {"type": "boolean", "required": true, "description": "Estado de botones de volumen"},
+        "camera_condition": {"type": "enum", "values": ["Funcional", "Dañada", "No verificada"], "required": true},
+        "photographic_evidence": {"type": "array", "items": "image_path", "required": true, "description": "Fotografías del estado físico"},
+        "existing_seals": {"type": "text", "required": false, "description": "Sellos o precintos existentes al momento de incautación"}
+      },
+      "device_state_at_seizure": {
+        "power_state": {"type": "enum", "values": ["Encendido", "Apagado", "Bloqueado", "Pantalla negra"], "required": true},
+        "battery_level": {"type": "integer", "min": 0, "max": 100, "required": true, "description": "Porcentaje de batería"},
+        "charging_state": {"type": "boolean", "required": true, "description": "Si estaba conectado a cargador"},
+        "network_state": {
+          "wifi_enabled": {"type": "boolean", "required": true},
+          "mobile_data_enabled": {"type": "boolean", "required": true},
+          "bluetooth_enabled": {"type": "boolean", "required": true},
+          "gps_enabled": {"type": "boolean", "required": true},
+          "airplane_mode": {"type": "boolean", "required": true}
+        },
+        "sim_cards": {
+          "count": {"type": "integer", "required": true},
+          "carriers": {"type": "array", "items": "string", "required": false},
+          "iccid_numbers": {"type": "array", "items": "string", "required": false}
+        },
+        "sd_card_present": {"type": "boolean", "required": true},
+        "sd_card_capacity": {"type": "string", "required": false}
+      },
+      "lock_information": {
+        "lock_type": {"type": "enum", "values": ["Patrón", "PIN", "Contraseña", "Huella", "Reconocimiento facial", "Ninguno", "Desconocido"], "required": true},
+        "unlock_provided": {"type": "boolean", "required": true, "description": "Si se proporcionó método de desbloqueo"},
+        "unlock_method_obtained": {"type": "enum", "values": ["Voluntario", "Orden Judicial", "Herramienta forense", "No obtenido"], "required": true}
+      },
+      "initial_collector": {
+        "full_name": {"type": "string", "required": true, "description": "Nombre del funcionario recolector"},
+        "badge_number": {"type": "string", "required": true, "description": "Número de placa o credencial"},
+        "rank": {"type": "string", "required": true, "description": "Rango o cargo"},
+        "unit": {"type": "string", "required": true, "description": "Unidad o división"},
+        "signature": {"type": "image_path", "required": true, "description": "Firma digitalizada"},
+        "collection_date": {"type": "datetime", "format": "YYYY-MM-DD HH:MM:SS", "required": true}
+      },
+      "security_measures": {
+        "faraday_bag_used": {"type": "boolean", "required": true, "description": "Si se usó bolsa de Faraday"},
+        "faraday_bag_id": {"type": "string", "required": false, "description": "ID de la bolsa de Faraday"},
+        "evidence_bag_id": {"type": "string", "required": true, "description": "ID de la bolsa de evidencia"},
+        "security_seal_id": {"type": "string", "required": true, "description": "ID del sello de seguridad"},
+        "seal_qr_code": {"type": "string", "required": false, "description": "Código QR del sello"},
+        "anti_tampering_measures": {"type": "text", "required": true, "description": "Medidas anti-manipulación aplicadas"}
+      },
+      "forensic_acquisition": {
+        "acquisition_required": {"type": "boolean", "required": true},
+        "acquisition_date": {"type": "datetime", "format": "YYYY-MM-DD HH:MM:SS", "required": false},
+        "acquisition_method": {"type": "enum", "values": ["Extracción lógica", "Extracción física", "Extracción de sistema de archivos", "Chip-off", "JTAG"], "required": false},
+        "forensic_tool": {"type": "string", "required": false, "examples": ["Cellebrite UFED", "Oxygen Forensic", "MSAB XRY", "Autopsy"]},
+        "tool_version": {"type": "string", "required": false},
+        "examiner_name": {"type": "string", "required": false, "description": "Nombre del examinador forense"},
+        "hash_before_analysis": {"type": "object", "properties": {"sha256": "string", "sha1": "string", "md5": "string"}, "required": false},
+        "hash_after_analysis": {"type": "object", "properties": {"sha256": "string", "sha1": "string", "md5": "string"}, "required": false},
+        "hash_verification_passed": {"type": "boolean", "required": false, "description": "Validación de integridad"}
+      },
+      "storage_information": {
+        "storage_location": {"type": "string", "required": true, "description": "Ubicación física de almacenamiento"},
+        "evidence_room": {"type": "string", "required": true, "description": "Sala de evidencia"},
+        "locker_number": {"type": "string", "required": false, "description": "Número de casillero"},
+        "shelf_number": {"type": "string", "required": false, "description": "Número de estante"},
+        "climate_controlled": {"type": "boolean", "required": true, "description": "Si tiene control climático"},
+        "access_restrictions": {"type": "text", "required": true, "description": "Restricciones de acceso"}
+      }
+    },
+
+    "custody_transfer_log": {
+      "description": "Registro inmutable de cada transferencia de custodia",
+      "fields": {
+        "transfer_id": {"type": "string", "auto_generated": true, "format": "TRF-YYYYMMDD-XXX"},
+        "evidence_id": {"type": "string", "required": true, "foreign_key": "evidence.evidence_id"},
+        "transfer_date": {"type": "datetime", "format": "YYYY-MM-DD HH:MM:SS", "required": true},
+        "transfer_time": {"type": "time", "format": "HH:MM:SS", "required": true},
+        "from_custodian": {
+          "full_name": {"type": "string", "required": true},
+          "badge_number": {"type": "string", "required": true},
+          "unit": {"type": "string", "required": true},
+          "signature": {"type": "image_path", "required": true}
+        },
+        "to_custodian": {
+          "full_name": {"type": "string", "required": true},
+          "badge_number": {"type": "string", "required": true},
+          "unit": {"type": "string", "required": true},
+          "signature": {"type": "image_path", "required": true}
+        },
+        "transfer_reason": {"type": "enum", "values": ["Análisis forense", "Presentación judicial", "Traslado a depósito", "Devolución", "Otro"], "required": true},
+        "transfer_details": {"type": "text", "required": false, "description": "Detalles adicionales de la transferencia"},
+        "witness_name": {"type": "string", "required": false, "description": "Nombre del testigo si aplica"},
+        "witness_signature": {"type": "image_path", "required": false},
+        "device_condition_at_transfer": {"type": "enum", "values": ["Igual", "Mejorado", "Deteriorado", "Modificado"], "required": true},
+        "condition_notes": {"type": "text", "required": false},
+        "hash_verification": {
+          "performed": {"type": "boolean", "required": true},
+          "sha256_before": {"type": "string", "required": false},
+          "sha256_after": {"type": "string", "required": false},
+          "match": {"type": "boolean", "required": false}
+        },
+        "authorized_by": {"type": "string", "required": false, "description": "Autoridad que autoriza la transferencia"},
+        "return_date": {"type": "datetime", "format": "YYYY-MM-DD HH:MM:SS", "required": false, "description": "Fecha de retorno si es temporal"}
+      }
+    },
+
+    "chain_integrity_validation": {
+      "automatic_checks": [
+        {
+          "check_id": "CHK001",
+          "name": "Hash Integrity Verification",
+          "description": "Validar que los hashes coincidan antes y después de cada transferencia",
+          "trigger": "on_custody_transfer",
+          "action_if_failed": "Alert immediately, mark chain as broken"
+        },
+        {
+          "check_id": "CHK002",
+          "name": "Time Sequence Validation",
+          "description": "Verificar que las fechas de transferencia sean cronológicamente consistentes",
+          "trigger": "on_custody_transfer_entry",
+          "action_if_failed": "Prevent entry, show warning"
+        },
+        {
+          "check_id": "CHK003",
+          "name": "Signature Completeness",
+          "description": "Validar que todas las firmas requeridas estén presentes",
+          "trigger": "on_form_submission",
+          "action_if_failed": "Block submission"
+        },
+        {
+          "check_id": "CHK004",
+          "name": "Custody Gap Detection",
+          "description": "Detectar períodos sin custodio asignado",
+          "trigger": "periodic",
+          "action_if_failed": "Generate alert report"
+        },
+        {
+          "check_id": "CHK005",
+          "name": "Seal Integrity Check",
+          "description": "Verificar que los sellos de seguridad no hayan sido alterados",
+          "trigger": "on_custody_transfer",
+          "action_if_failed": "Require photographic evidence and justification"
+        }
+      ]
+    }
+  },
+
+  "adapted_modules_from_kanvas": {
+    "mobile_evidence_tracker": {
+      "based_on": "Evidence Tracker sheet in sod.xlsx",
+      "enhancements": [
+        "Corregir typo: 'Chain of Custory Notes' -> 'Chain of Custody Notes'",
+        "Agregar campos específicos para dispositivos móviles",
+        "Implementar validación automática de hashes",
+        "Generar IDs únicos de evidencia con formato VEN-YYYYMMDD-XXX",
+        "Incluir soporte para códigos QR de sellos"
+      ],
+      "new_sheet_name": "Mobile Device Chain of Custody",
+      "excel_columns": [
+        "ID Evidencia",
+        "IMEI",
+        "Número de Serie",
+        "Marca",
+        "Modelo",
+        "Versión Android",
+        "Propietario",
+        "Cédula/ID",
+        "Número de Caso",
+        "Orden Judicial",
+        "Fecha Incautación",
+        "Hora Incautación",
+        "Lugar Incautación",
+        "Motivo Legal",
+        "Estado Físico",
+        "Estado Encendido",
+        "Nivel Batería",
+        "Tipo Bloqueo",
+        "Recolectado Por",
+        "Placa/Credencial",
+        "Hash SHA256",
+        "Hash SHA1",
+        "Hash MD5",
+        "Ubicación Almacenamiento",
+        "Bolsa Faraday ID",
+        "Sello Seguridad ID",
+        "Código QR Sello",
+        "Notas Cadena de Custodia",
+        "Fotografías Adjuntas",
+        "Fecha Creación Registro",
+        "Última Actualización"
+      ]
+    },
+
+    "mobile_system_type": {
+      "based_on": "Mobile entry in system_types.yaml",
+      "enhanced_config": {
+        "name": "Mobile-Android",
+        "display_name": "Dispositivo Móvil Android",
+        "category": "Client-Mobile",
+        "icon_filename": "mobile_icon.png",
+        "fallback_color": "#00ff7f",
+        "description": "Teléfonos móviles y tablets Android bajo cadena de custodia",
+        "sort_order": 18,
+        "subtypes": [
+          "Smartphone",
+          "Tablet",
+          "Feature Phone",
+          "Wearable"
+        ],
+        "forensic_states": [
+          "Awaiting Acquisition",
+          "Acquisition in Progress",
+          "Analysis in Progress",
+          "Awaiting Report",
+          "Ready for Return",
+          "Returned to Owner",
+          "Court Evidence"
+        ]
+      }
+    },
+
+    "evidence_type_extension": {
+      "based_on": "EvidenceTypeManager class",
+      "new_evidence_types_for_mobile": [
+        "Dispositivo Móvil Android",
+        "Tarjeta SIM",
+        "Tarjeta SD",
+        "Cargador",
+        "Cable USB",
+        "Bolsa de Faraday",
+        "Contenedor de Evidencia",
+        "Sello de Seguridad",
+        "Documentación Fotográfica",
+        "Imagen Forense",
+        "Reporte de Extracción",
+        "Hash Verification Report"
+      ]
+    },
+
+    "custody_transfer_module": {
+      "new_module": true,
+      "based_on_logic": "File locking and multi-user support from kanvas.py",
+      "features": [
+        "Registro de cada transferencia con firma digital",
+        "Validación automática de hashes antes/después",
+        "Generación de formulario PDF estandarizado",
+        "Códigos QR para sellos de seguridad",
+        "Línea de tiempo inmutable de transferencias",
+        "Alertas de rupturas en cadena de custodia",
+        "Notificaciones por email/SMS de transferencias",
+        "Soporte para múltiples testigos"
+      ],
+      "database_tables": [
+        {
+          "table_name": "custody_transfers",
+          "columns": [
+            "transfer_id TEXT PRIMARY KEY",
+            "evidence_id TEXT NOT NULL",
+            "transfer_datetime TIMESTAMP NOT NULL",
+            "from_custodian_id INTEGER REFERENCES custodians(id)",
+            "to_custodian_id INTEGER REFERENCES custodians(id)",
+            "transfer_reason TEXT NOT NULL",
+            "transfer_details TEXT",
+            "witness_name TEXT",
+            "witness_signature BLOB",
+            "device_condition TEXT",
+            "condition_notes TEXT",
+            "hash_sha256_before TEXT",
+            "hash_sha256_after TEXT",
+            "hash_match BOOLEAN",
+            "authorized_by TEXT",
+            "return_datetime TIMESTAMP",
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+          ]
+        },
+        {
+          "table_name": "custodians",
+          "columns": [
+            "id INTEGER PRIMARY KEY AUTOINCREMENT",
+            "full_name TEXT NOT NULL",
+            "badge_number TEXT UNIQUE NOT NULL",
+            "rank TEXT",
+            "unit TEXT NOT NULL",
+            "email TEXT",
+            "phone TEXT",
+            "signature_image BLOB",
+            "is_active BOOLEAN DEFAULT 1",
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+          ]
+        },
+        {
+          "table_name": "mobile_devices",
+          "columns": [
+            "evidence_id TEXT PRIMARY KEY",
+            "imei TEXT UNIQUE",
+            "serial_number TEXT",
+            "brand TEXT NOT NULL",
+            "model TEXT NOT NULL",
+            "android_version TEXT",
+            "security_patch_level DATE",
+            "build_number TEXT",
+            "owner_name TEXT",
+            "owner_id_type TEXT",
+            "owner_id_number TEXT",
+            "owner_phone TEXT",
+            "owner_address TEXT",
+            "case_number TEXT NOT NULL",
+            "legal_basis TEXT NOT NULL",
+            "judicial_order_number TEXT",
+            "seizure_datetime TIMESTAMP NOT NULL",
+            "seizure_location TEXT NOT NULL",
+            "seizure_reason TEXT NOT NULL",
+            "prosecutor_name TEXT",
+            "prosecutor_office TEXT",
+            "external_condition TEXT",
+            "screen_condition TEXT",
+            "body_condition TEXT",
+            "ports_condition TEXT",
+            "power_button BOOLEAN",
+            "volume_buttons BOOLEAN",
+            "camera_condition TEXT",
+            "photo_evidence_paths TEXT",
+            "power_state TEXT",
+            "battery_level INTEGER",
+            "charging_state BOOLEAN",
+            "wifi_enabled BOOLEAN",
+            "mobile_data_enabled BOOLEAN",
+            "bluetooth_enabled BOOLEAN",
+            "gps_enabled BOOLEAN",
+            "airplane_mode BOOLEAN",
+            "sim_count INTEGER",
+            "sim_carriers TEXT",
+            "sim_iccid_numbers TEXT",
+            "sd_card_present BOOLEAN",
+            "sd_card_capacity TEXT",
+            "lock_type TEXT",
+            "unlock_provided BOOLEAN",
+            "unlock_method_obtained TEXT",
+            "initial_collector_name TEXT NOT NULL",
+            "initial_collector_badge TEXT NOT NULL",
+            "initial_collector_rank TEXT",
+            "initial_collector_unit TEXT NOT NULL",
+            "initial_collector_signature BLOB",
+            "collection_datetime TIMESTAMP NOT NULL",
+            "faraday_bag_used BOOLEAN",
+            "faraday_bag_id TEXT",
+            "evidence_bag_id TEXT NOT NULL",
+            "security_seal_id TEXT NOT NULL",
+            "seal_qr_code TEXT",
+            "anti_tampering_measures TEXT",
+            "acquisition_required BOOLEAN",
+            "acquisition_datetime TIMESTAMP",
+            "acquisition_method TEXT",
+            "forensic_tool TEXT",
+            "tool_version TEXT",
+            "examiner_name TEXT",
+            "hash_before_sha256 TEXT",
+            "hash_before_sha1 TEXT",
+            "hash_before_md5 TEXT",
+            "hash_after_sha256 TEXT",
+            "hash_after_sha1 TEXT",
+            "hash_after_md5 TEXT",
+            "hash_verification_passed BOOLEAN",
+            "storage_location TEXT NOT NULL",
+            "evidence_room TEXT NOT NULL",
+            "locker_number TEXT",
+            "shelf_number TEXT",
+            "climate_controlled BOOLEAN",
+            "access_restrictions TEXT",
+            "current_status TEXT",
+            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+          ]
+        }
+      ]
+    },
+
+    "reporting_extensions": {
+      "based_on": "helper/reporting/ module",
+      "new_reports": [
+        {
+          "report_name": "Formulario de Incautación de Dispositivo Móvil",
+          "format": "PDF",
+          "template": "venezuelan_seizure_form.html",
+          "includes": [
+            "Datos completos del dispositivo",
+            "Información del propietario",
+            "Detalle de condiciones físicas",
+            "Fotografías insertadas",
+            "Firmas digitalizadas",
+            "Códigos QR de sellos"
+          ]
+        },
+        {
+          "report_name": "Certificado de Cadena de Custodia",
+          "format": "PDF",
+          "template": "custody_certificate.html",
+          "includes": [
+            "Línea de tiempo completa de transferencias",
+            "Todas las firmas de custodios",
+            "Validaciones de hash",
+            "Estado actual del dispositivo",
+            "Sello oficial del Ministerio Público"
+          ]
+        },
+        {
+          "report_name": "Reporte de Integridad de Evidencia",
+          "format": "PDF + HTML",
+          "template": "integrity_report.html",
+          "includes": [
+            "Comparativa de hashes",
+            "Gráfico de línea de tiempo",
+            "Alertas de rupturas",
+            "Períodos sin custodio",
+            "Recomendaciones"
+          ]
+        },
+        {
+          "report_name": "Exportación para Presentación Judicial",
+          "format": "PDF + XML",
+          "template": "court_submission.html",
+          "includes": [
+            "Todos los formularios oficiales",
+            "Certificaciones de autenticidad",
+            "Anexos fotográficos",
+            "Reportes forenses completos"
+          ]
+        }
+      ]
+    },
+
+    "timeline_visualization_enhanced": {
+      "based_on": "helper/viz_timeline.py",
+      "enhancements": [
+        "Mostrar eventos de transferencia como hitos",
+        "Resaltar períodos críticos",
+        "Indicar rupturas de cadena en rojo",
+        "Mostrar custodio actual en tiempo real",
+        "Exportar timeline como imagen PNG/PDF"
+      ]
+    },
+
+    "validation_engine": {
+      "new_module": true,
+      "validations": [
+        {
+          "validation_id": "VAL001",
+          "name": "IMEI Format Validation",
+          "pattern": "^[0-9]{15}$",
+          "error_message": "IMEI debe ser exactamente 15 dígitos numéricos"
+        },
+        {
+          "validation_id": "VAL002",
+          "name": "Venezuelan ID Validation",
+          "patterns": {
+            "cedula": "^V-[0-9]{8,9}$",
+            "pasaporte": "^P[A-Z0-9]{6,9}$",
+            "rif": "^[VEJPG]-[0-9]{8,9}-[0-9]$"
+          },
+          "error_message": "Formato de identificación venezolano inválido"
+        },
+        {
+          "validation_id": "VAL003",
+          "name": "Case Number Format",
+          "pattern": "^[A-Z]{2,4}-[0-9]{4}-[0-9]{4,6}$",
+          "error_message": "Formato de número de caso inválido (ej: MP-2024-12345)"
+        },
+        {
+          "validation_id": "VAL004",
+          "name": "Hash SHA256 Validation",
+          "pattern": "^[a-fA-F0-9]{64}$",
+          "error_message": "Hash SHA256 inválido"
+        },
+        {
+          "validation_id": "VAL005",
+          "name": "Sequential Transfer Validation",
+          "logic": "transfer_date[n] >= transfer_date[n-1]",
+          "error_message": "Las fechas de transferencia deben ser secuenciales"
+        }
+      ]
+    },
+
+    "qr_code_generator": {
+      "new_module": true,
+      "purpose": "Generar códigos QR para sellos de seguridad",
+      "data_encoded": {
+        "evidence_id": "string",
+        "seal_id": "string",
+        "timestamp": "datetime",
+        "custodian_badge": "string",
+        "verification_url": "string"
+      },
+      "format": "QR Code ISO/IEC 18004",
+      "error_correction": "Level H (30%)",
+      "print_size": "50mm x 50mm minimum"
+    },
+
+    "digital_signature_integration": {
+      "new_module": true,
+      "supported_methods": [
+        "Firma manuscrita digitalizada (imagen PNG/JPG)",
+        "Firma biométrica (tablet con stylus)",
+        "Firma digital certificada (PKI)",
+        "Código de autenticación personal (CAP)"
+      ],
+      "storage": "BLOB en base de datos con cifrado AES-256",
+      "verification": "Hash de la firma almacenado para validación futura"
+    }
+  },
+
+  "ui_workflow": {
+    "main_sections": [
+      {
+        "section": "Registro de Nueva Evidencia",
+        "steps": [
+          "1. Escanear/ingresar IMEI del dispositivo",
+          "2. Completar información del propietario",
+          "3. Documentar condiciones físicas con fotografías",
+          "4. Registrar estado del dispositivo (encendido, batería, redes)",
+          "5. Especificar información legal de incautación",
+          "6. Asignar sellos de seguridad y generar QR",
+          "7. Capturar firma del recolector",
+          "8. Generar hash inicial del dispositivo",
+          "9. Imprimir formulario de incautación",
+          "10. Guardar registro en base de datos"
+        ]
+      },
+      {
+        "section": "Transferencia de Custodia",
+        "steps": [
+          "1. Seleccionar evidencia a transferir",
+          "2. Verificar hash actual del dispositivo",
+          "3. Registrar motivo de transferencia",
+          "4. Capturar firma del custodio saliente",
+          "5. Capturar firma del custodio entrante",
+          "6. Registrar testigos si aplica",
+          "7. Documentar condición al momento de transferencia",
+          "8. Generar nuevo hash post-transferencia",
+          "9. Validar integridad de hashes",
+          "10. Actualizar ubicación de almacenamiento",
+          "11. Generar certificado de transferencia",
+          "12. Notificar a partes interesadas"
+        ]
+      },
+      {
+        "section": "Análisis Forense",
+        "steps": [
+          "1. Solicitar autorización de análisis",
+          "2. Registrar entrada a laboratorio",
+          "3. Verificar integridad de sellos",
+          "4. Documentar método de adquisición",
+          "5. Ejecutar extracción forense",
+          "6. Generar hashes antes y después",
+          "7. Validar integridad de datos",
+          "8. Generar reporte de extracción",
+          "9. Registrar devolución a almacenamiento",
+          "10. Actualizar estado de evidencia"
+        ]
+      },
+      {
+        "section": "Consulta y Reportes",
+        "steps": [
+          "1. Buscar evidencia por ID/IMEI/caso",
+          "2. Visualizar cadena de custodia completa",
+          "3. Verificar estado actual",
+          "4. Generar reportes personalizados",
+          "5. Exportar datos para presentación judicial",
+          "6. Consultar alertas y validaciones fallidas"
+        ]
+      }
+    ]
+  },
+
+  "security_requirements": {
+    "authentication": {
+      "method": "Multi-factor authentication",
+      "requirements": [
+        "Usuario y contraseña robusta",
+        "Token TOTP (Google Authenticator)",
+        "Registro de IP y dispositivo de acceso"
+      ]
+    },
+    "authorization": {
+      "roles": [
+        {
+          "role": "Recolector",
+          "permissions": ["create_evidence", "view_assigned", "transfer_initiate"]
+        },
+        {
+          "role": "Custodio",
+          "permissions": ["view_all", "receive_transfer", "update_storage", "generate_reports"]
+        },
+        {
+          "role": "Examinador Forense",
+          "permissions": ["view_all", "request_analysis", "perform_analysis", "generate_hash_reports"]
+        },
+        {
+          "role": "Fiscal",
+          "permissions": ["view_all", "authorize_transfers", "generate_court_reports", "audit_trail"]
+        },
+        {
+          "role": "Administrador",
+          "permissions": ["full_access", "user_management", "system_configuration", "audit_logs"]
+        }
+      ]
+    },
+    "audit_logging": {
+      "logged_events": [
+        "login_success",
+        "login_failure",
+        "create_evidence",
+        "modify_evidence",
+        "transfer_custody",
+        "generate_report",
+        "export_data",
+        "failed_validation",
+        "hash_mismatch",
+        "unauthorized_access_attempt"
+      ],
+      "log_retention": "10 años mínimo",
+      "log_format": "JSON estructurado con timestamp UTC"
+    },
+    "data_encryption": {
+      "at_rest": "AES-256 para base de datos y archivos",
+      "in_transit": "TLS 1.3 para comunicaciones",
+      "signatures": "RSA-2048 o ECDSA P-256"
+    }
+  },
+
+  "implementation_recommendations": {
+    "technology_stack": {
+      "backend": "Python 3.9+ con PySide6 para UI desktop",
+      "database": "SQLite3 con cifrado SQLCipher",
+      "frontend": "PySide6 (Qt) manteniendo estilo de Kanvas",
+      "reporting": "Jinja2 templates + WeasyPrint para PDF",
+      "qr_generation": "qrcode library",
+      "hash_calculation": "hashlib (SHA256, SHA1, MD5)",
+      "file_locking": "filelock (igual que Kanvas)",
+      "image_processing": "Pillow para fotografías"
+    },
+    "project_structure": {
+      "root_files": [
+        "mobile_custody.py (main application)",
+        "requirements.txt",
+        "README.md",
+        "config.yaml"
+      ],
+      "helper_modules": [
+        "helper/database_utils.py",
+        "helper/evidence_manager.py",
+        "helper/custody_transfer.py",
+        "helper/validation_engine.py",
+        "helper/qr_generator.py",
+        "helper/hash_utils.py",
+        "helper/reporting/custody_reports.py",
+        "helper/reporting/pdf_generator.py",
+        "helper/viz_custody_timeline.py",
+        "helper/security/auth.py",
+        "helper/security/audit_logger.py"
+      ],
+      "configuration_files": [
+        "helper/device_types.yaml",
+        "helper/legal_codes.yaml",
+        "helper/storage_locations.yaml",
+        "helper/form_templates/"
+      ],
+      "assets": [
+        "images/mobile_icons/",
+        "images/seals/",
+        "images/signatures/",
+        "templates/pdf_forms/"
+      ]
+    },
+    "development_phases": [
+      {
+        "phase": 1,
+        "name": "Core Infrastructure",
+        "duration": "2 semanas",
+        "deliverables": [
+          "Base de datos con tablas principales",
+          "Sistema de autenticación",
+          "CRUD básico de evidencias",
+          "Interfaz principal inspirada en Kanvas"
+        ]
+      },
+      {
+        "phase": 2,
+        "name": "Custody Transfer System",
+        "duration": "2 semanas",
+        "deliverables": [
+          "Módulo de transferencias",
+          "Validación de hashes",
+          "Firmas digitales",
+          "Generación de QR"
+        ]
+      },
+      {
+        "phase": 3,
+        "name": "Reporting & Compliance",
+        "duration": "2 semanas",
+        "deliverables": [
+          "Formularios PDF venezolanos",
+          "Certificados de cadena",
+          "Reportes de auditoría",
+          "Exportación judicial"
+        ]
+      },
+      {
+        "phase": 4,
+        "name": "Testing & Validation",
+        "duration": "2 semanas",
+        "deliverables": [
+          "Pruebas de integración",
+          "Validación legal",
+          "Documentación de usuario",
+          "Capacitación"
+        ]
+      }
+    ]
+  },
+
+  "comparison_with_original_kanvas": {
+    "similarities": [
+      "Uso de SQLite para almacenamiento",
+      "Interfaz gráfica con PySide6",
+      "Sistema de bloqueo de archivos concurrentes",
+      "Gestión de tipos personalizables",
+      "Generación de reportes HTML/PDF",
+      "Visualización de timelines",
+      "Exportación de datos"
+    ],
+    "differences": [
+      "Enfoque exclusivo en dispositivos móviles Android",
+      "Campos específicos para normativa venezolana",
+      "Módulo especializado de transferencias de custodia",
+      "Validaciones automáticas de integridad",
+      "Generación de códigos QR para sellos",
+      "Soporte para firmas digitales certificadas",
+      "Cumplimiento explícito con Manual Único venezolano",
+      "Auditoría detallada para presentación judicial"
+    ],
+    "improvements_over_kanvas": [
+      "Corrección del typo 'Custory' -> 'Custody'",
+      "Campos específicos faltantes en Kanvas agregados",
+      "Flujos de trabajo automatizados para transferencias",
+      "Alertas proactivas de rupturas en cadena",
+      "Validación de hashes en cada transferencia",
+      "Formularios estandarizados venezolanos"
+    ]
+  }
+}
