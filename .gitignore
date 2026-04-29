@@ -1,1 +1,4 @@
-Nothing should be ignored based on the provided file changes. The only file added is `mobile_chain_custody_spec.json`, which appears to be a source/config file and should not be ignored.
+```markdown
+# Documentation
+KANVAS_ARCHITECTURE.md
+```
